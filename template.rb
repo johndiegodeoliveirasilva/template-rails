@@ -18,7 +18,6 @@ gem_group :test do
   gem 'simplecov', require: false
 end
 
-
 # === Após instalar dependências ===
 after_bundle do
   generate "rspec:install"
@@ -63,6 +62,8 @@ after_bundle do
     DATABASE_HOST=db
     DATABASE_PORT=5432
     REDIS_URL=redis://redis:6379/1
+    POSTGRES_PASSWORD=postgres
+    POSTGRES_USER=postgres
   ENV
 
   # Substituir todo o conteúdo do rails_helper.rb
@@ -95,18 +96,24 @@ after_bundle do
     RUBY
   end
 
-  # entrypoint.sh
-  file 'entrypoint.sh', <<~CODE
+  # Cria o entrypoint.sh para Docker
+  file 'entrypoint.sh', <<~BASH
     #!/usr/bin/env bash
     set -e
-    echo "Cleaning up old server PIP file..."
-    rm -f tmp/pips/server.pid
-    exec bundle exec rails s -b 0.0.0.0 -p 3000
-  CODE
+
+    # Remove a potentially pre-existing server.pid for Rails.
+    rm -f /app/tmp/pids/server.pid
+
+    # Executa o comando recebido no container (CMD ou docker-compose).
+    exec "$@"
+  BASH
+
+  # Dá permissão de execução
+  run 'chmod +x entrypoint.sh'
 
   # ---- Dockerfile ----
   file 'Dockerfile', <<~DOCKER
-    FROM ruby:3.4
+    FROM ruby:3.4.4
 
     # Instala dependências do sistema
     RUN apt-get update -qq && apt-get install -y \
@@ -121,6 +128,8 @@ after_bundle do
 
     WORKDIR /app
 
+
+    RUN bundle config set --local path '/usr/local/bundle'
     # Copia Gemfile e instala gems
     COPY Gemfile Gemfile.lock ./
     RUN bundle install --jobs 4 --retry 3
@@ -134,14 +143,11 @@ after_bundle do
     RUN ln -sf /dev/stdout log/development.log
 
     # Entrypoint
+    # Copia scripts de entrada
     COPY entrypoint.sh /usr/bin/
     RUN chmod +x /usr/bin/entrypoint.sh
-    ENTRYPOINT ["entrypoint.sh"]
-
+    ENTRYPOINT [ "entrypoint.sh" ]
     EXPOSE 3000
-
-    CMD ["bundle", "exec", "rails", "s", "-b", "0.0.0.0", "-p", "3000"]
-
   DOCKER
 
   # ---- docker-compose-yml ----
@@ -155,37 +161,60 @@ after_bundle do
         env_file:
           - .env
         ports:
-          - "5432:5432"
+          - "5431:5432"
+        healthcheck:
+          test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+          interval: 10s
+          timeout: 5s
+          retries: 5
       redis:
         image: redis:7-alpine
         ports:
-          - "6379:6379"
-
+          - "6371:6379"
+        healthcheck:
+          test: ["CMD", "redis-cli", "ping"]
+          interval: 10s
+          timeout: 5s
+          retries: 5
+      sidekiq:
+        container_name: 'sidekiq'
+        build: .
+        command: bundle exec sidekiq -C config/sidekiq.yml
+        volumes:
+          - .:/app:cached
+        depends_on:
+          db:
+            condition: service_healthy
+          redis:
+            condition: service_healthy
+        env_file:
+          - .env
+        environment:
+          RAILS_ENV: ${RAILS_ENV:-development}
       web:
         build: .
-        command: bash -c "./entrypoint.sh"
+        command: >
+          bash -c "rm -f tmp/pids/server.pid &&
+          bundle exec rake db:create &&
+          bundle exec rake db:migrate &&
+          bundle exec rails s -p 3000 -b '0.0.0.0'"
         volumes:
-          - .:/app
+          - .:/app/cached
+          - bundle_cache:/usr/local/bundle
         ports:
           - "3000:3000"
         depends_on:
-          - db
+          db:
+            condition: service_healthy
+          redis:
+            condition: service_healthy
         env_file:
           - .env
-
-      sidekiq:
-        build: .
-        command: bash -c 'bundle exec sidekiq'
-        volumes:
-          - .:/app
-        depends_on:
-          - db
-          - redis
-        env_file:
-          - .env
-
+        environment:
+          RAILS_ENV: ${RAILS_ENV:-development}
     volumes:
       postgres_data:
+      bundle_cache:
   YAML
 
   # ---- GitHUB Actions (CI) ----
