@@ -115,33 +115,19 @@ after_bundle do
   file 'Dockerfile', <<~DOCKER
     FROM ruby:3.4.4
 
-    # Instala dependências do sistema
-    RUN apt-get update -qq && apt-get install -y \
-        build-essential \
-        libpq-dev \
-        libyaml-dev \
-        nodejs \
-        postgresql-client \
-        libxml2-dev \
-        curl \
-        && rm -rf /var/lib/apt/lists/*
-
     WORKDIR /app
+    # Instala dependências do sistema
+    RUN apt-get update -qq && apt-get install -y     build-essential     libpq-dev     libyaml-dev     nodejs     postgresql-client     libxml2-dev     curl     && rm -rf /var/lib/apt/lists/*
 
-
-    RUN bundle config set --local path '/usr/local/bundle'
     # Copia Gemfile e instala gems
     COPY Gemfile Gemfile.lock ./
     RUN bundle install --jobs 4 --retry 3
-
+    
     # Copia o restante do código
     COPY . .
-
-    # Ajusta permissões do vendor/bundle
-
     # Link do log para stdout
     RUN ln -sf /dev/stdout log/development.log
-
+    
     # Entrypoint
     # Copia scripts de entrada
     COPY entrypoint.sh /usr/bin/
@@ -181,7 +167,7 @@ after_bundle do
         build: .
         command: bundle exec sidekiq -C config/sidekiq.yml
         volumes:
-          - .:/app:cached
+          - .:/app
         depends_on:
           db:
             condition: service_healthy
@@ -199,7 +185,7 @@ after_bundle do
           bundle exec rake db:migrate &&
           bundle exec rails s -p 3000 -b '0.0.0.0'"
         volumes:
-          - .:/app/cached
+          - .:/app
           - bundle_cache:/usr/local/bundle
         ports:
           - "3000:3000"
@@ -214,7 +200,6 @@ after_bundle do
           RAILS_ENV: ${RAILS_ENV:-development}
     volumes:
       postgres_data:
-      bundle_cache:
   YAML
 
   # ---- GitHUB Actions (CI) ----
