@@ -115,9 +115,15 @@ after_bundle do
   file 'Dockerfile', <<~DOCKER
     FROM ruby:3.4.4
 
+    # Install dependencies
+    RUN apt-get update -qq && apt-get install -y  build-essential libpq-dev libyaml-dev nodejs postgresql-client libxml2-dev curl && rm -rf /var/lib/apt/lists/*
+
+    RUN curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg |  apt-key add -
+    RUN echo "deb https://dl.yarnpkg.com/debian/ stable main" | tee /etc/apt/sources.list.d/yarn.list
+    RUN apt update
+    RUN apt install yarn
+
     WORKDIR /app
-    # Instala dependências do sistema
-    RUN apt-get update -qq && apt-get install -y     build-essential     libpq-dev     libyaml-dev     nodejs     postgresql-client     libxml2-dev     curl     && rm -rf /var/lib/apt/lists/*
 
     # Copia Gemfile e instala gems
     COPY Gemfile Gemfile.lock ./
