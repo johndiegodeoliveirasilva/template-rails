@@ -111,9 +111,11 @@ after_bundle do
   # Dá permissão de execução
   run 'chmod +x entrypoint.sh'
 
+  ruby_version = `ruby -v`.match(/ruby (\d+\.\d+\.\d+)/)[1]
+
   # ---- Dockerfile ----
   file 'Dockerfile', <<~DOCKER
-    FROM ruby:3.4.4
+    FROM ruby:#{ruby_version}-slim
 
     # Install dependencies
     RUN apt-get update -qq && apt-get install -y  build-essential libpq-dev libyaml-dev nodejs postgresql-client libxml2-dev curl && rm -rf /var/lib/apt/lists/*
