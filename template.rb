@@ -1,5 +1,6 @@
 # template.rb
 gem 'sidekiq'
+gem 'devise'
 
 gem_group :development, :test do
   gem 'dotenv-rails'
@@ -351,5 +352,20 @@ after_bundle do
   route <<~RUBY
     require "sidekiq/web"
     mount Sidekiq::Web => '/sidekiq'
+  RUBY
+
+  # ---- config/devise.rb ----
+  rails generate devise:install
+
+  # ---- generate devise User ----
+  rails generate devise User
+  rails db:migrate
+
+  # ---- generate devise views ----
+  rails generate devise:views
+
+  # ---- generate seed to generate admin user ----
+  file 'db/seeds.rb', <<~RUBY
+    User.create(email: 'admin@gmail.com', password: '123456', password_confirmation: '123456')
   RUBY
 end

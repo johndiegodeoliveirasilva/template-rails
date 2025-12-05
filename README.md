@@ -14,4 +14,4 @@ Para utiliza-lo e ter todas as dependencias configuradas execute o seguinte coma
 ```ruby
     rails new [project_name] -m template-rails/template.rb -d [database]
 ```
-
+Foi criado um usuário padrão inicial, que se encontra dentro de seeds.rb
